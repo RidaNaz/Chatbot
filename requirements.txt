@@ -156,7 +156,7 @@ psutil==6.1.0
 psycopg==3.2.3
 psycopg-binary==3.2.3
 psycopg-pool==3.2.4
-psycopg2==2.9.10
+psycopg2-binary
 ptyprocess==0.7.0
 pure_eval==0.2.3
 pyarrow==17.0.0
