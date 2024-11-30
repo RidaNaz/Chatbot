@@ -1,0 +1,15 @@
+langsmith
+langgraph
+langgraph-cli
+langchain-core
+langchain_google_genai
+langgraph-checkpoint-postgres
+psycopg
+psycopg-pool
+psycopg-binary
+tavily-python
+langchain_community
+python-dotenv
+google-auth
+google-auth-oauthlib
+flask
