@@ -87,7 +87,6 @@ def human_node(state: State):
 model = ChatGoogleGenerativeAI(
     model="gemini-pro",
     api_key=gemini_api_key,
-    max_retries=2,
     temperature=0.2
 )
 
@@ -118,16 +117,15 @@ def summarize_conversation(state: State, message_count_threshold: int = 6) -> Di
 
         # Add the summarization prompt to the conversation history
         messages = state["messages"] + [HumanMessage(content=summary_message)]
-        response = model.invoke(messages)
+        summary_response = model.invoke(messages)
 
         # Save the updated summary in the state
-        state["summary"] = response.content
+        state["summary"] = summary_response.content
 
         # Delete all but the 2 most recent messages
-        delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-2]]
+        delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-10]]
 
         return {
-            "summarize_conversation": response.content,
             "messages": delete_messages
         }
     
@@ -258,11 +256,13 @@ async def on_message(msg: cl.Message):
         stream_mode="messages", 
         config=RunnableConfig(callbacks=[cb], **config)
     ):
-        # Check if the message has content and the node isn't a HumanMessage
+        # Check if the message has content and is not a HumanMessage
         if msg.content and not isinstance(msg, HumanMessage):
-            # If it reaches the end of the stream or the last node in the graph, send the message
-            if metadata["langgraph_node"] in ["agent", "tools", "human", "summarize_conversation"]:
-                await final_answer.stream_token(msg.content)
+            # Exclude the summary-related messages
+            if metadata.get("langgraph_node") not in ["summarize_conversation"]:
+                # Send the message if it's a relevant node
+                if metadata["langgraph_node"] in ["agent", "tools", "human"]:
+                    await final_answer.stream_token(msg.content)
 
     # Send the final answer once streaming is complete
     await final_answer.send()
