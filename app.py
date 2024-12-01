@@ -1,18 +1,18 @@
 import os
+import chainlit as cl
 from dotenv import load_dotenv
-from typing import Literal, Dict, Union, Optional
+from typing import Literal, Dict, Union
 from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode
 from langchain.schema.runnable.config import RunnableConfig
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, RemoveMessage, ToolCall
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, RemoveMessage
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import MessagesState
 from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
-import chainlit as cl
 
 load_dotenv()
 
@@ -224,24 +224,24 @@ graph = builder.compile(checkpointer=checkpointer, interrupt_before=["human"])
 async def set_starters():
     return [
         cl.Starter(
-            label="Text inviting friend to wedding",
-            message="Write a text asking a friend to be my plus-one at a wedding next month. I want to keep it super short and casual, and offer an out.",
-            icon="/public/favicon.png",
+            label="Explore AI tools for productivity",
+            message="Recommend some AI-powered tools that can help improve productivity, and explain how they work in simple terms.",
+            icon="/public/search.png",
             ),
         cl.Starter(
-            label="Morning routine ideation",
-            message="Can you help me create a personalized morning routine that would help increase my productivity throughout the day? Start by asking me about my current habits and what activities energize me in the morning.",
+            label="Plan a tech meetup discussion",
+            message="Suggest some engaging discussion topics for a tech meetup. I want them to be beginner-friendly but still interesting for tech enthusiasts.",
             icon="/public/idea.png",
             ),
 
         cl.Starter(
-            label="Explain superconductors",
-            message="Explain superconductors like I'm five years old.",
-            icon="/public/search.png",
+            label="Basics of generative AI",
+            message="Explain the basics of generative AI and its real-world applications. Keep it concise and easy to understand.",
+            icon="/public/genai.png",
             ),
         cl.Starter(
-            label="Python script for daily email reports",
-            message="Write a script to automate sending daily email reports in Python, and walk me through how I would set it up.",
+            label="New automation script for workflows",
+            message="Brainstorm an automation script idea to simplify repetitive tasks in my daily workflow. Focus on creativity and practicality.",
             icon="/public/pen.png",
             )
         ]
