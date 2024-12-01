@@ -14,64 +14,15 @@ from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
 import chainlit as cl
 
-from flask import Flask, redirect, request, session, url_for
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-
 load_dotenv()
 
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
 NEON_DB_URI = os.getenv("NEON_DB_URI")
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("REDIRECT_URI")
 
 os.environ["TAVILY_API_KEY"]= os.getenv("TAVILY_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_PROJECT"] = "chatbot"
-
-# Initialize Flask app
-app = Flask(__name__)
-app.secret_key = os.urandom(24)  # Generate a random secret key
-
-# Google OAuth 2.0 Configuration
-
-flow = Flow.from_client_secrets_file(
-    'client_secret.json',
-    # Downloaded from Google Cloud Console
-    scopes=['https://www.googleapis.com/auth/userinfo.email', 'openid'],
-    redirect_uri=REDIRECT_URI
-)
-
-@app.route("/login")
-def login():
-    authorization_url, state = flow.authorization_url()
-    session["state"] = state
-    return redirect(authorization_url)
-
-@app.route("/oauth/callback")
-def callback():
-    flow.fetch_token(authorization_response=request.url)
-    credentials = flow.credentials
-    session["credentials"] = credentials_to_dict(credentials)
-
-    return "Authentication successful! You can now use the app."
-
-def credentials_to_dict(credentials):
-    return {
-        "token": credentials.token,
-        "refresh_token": credentials.refresh_token,
-        "token_uri": credentials.token_uri,
-        "client_id": credentials.client_id,
-        "client_secret": credentials.client_secret,
-        "scopes": credentials.scopes,
-    }
-
-if __name__ == "__main__":
-    app.run(port=8000)
-
 
 # Postgres DB
 
@@ -134,7 +85,7 @@ def human_node(state: State):
 # Model
 
 model = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-pro",
     api_key=gemini_api_key,
     max_retries=2,
     temperature=0.2
