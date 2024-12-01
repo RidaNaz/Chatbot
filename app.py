@@ -124,7 +124,7 @@ def summarize_conversation(state: State, message_count_threshold: int = 6) -> Di
         state["summary"] = response.content
 
         # Delete all but the 2 most recent messages
-        delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-10]]
+        delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-2]]
 
         return {
             "summarize_conversation": response.content,
@@ -207,7 +207,7 @@ builder.add_node(summarize_conversation)
 builder.add_edge(START, "agent")
 builder.add_edge("human", "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("summarize_conversation", "agent")
+builder.add_edge("summarize_conversation", END)
 
 builder.add_conditional_edges(
     "agent",
