@@ -121,9 +121,7 @@ def summarize_conversation(state: State) -> Dict[str, object]:
         # Delete all but the 2 most recent messages
     delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-10]]
 
-    return {
-        "summarize_conversation": response.content, "messages": delete_messages
-        }
+    return {"messages": delete_messages}
 
 
 # Conditional Function
@@ -198,7 +196,7 @@ builder.add_node(summarize_conversation)
 builder.add_edge(START, "agent")
 builder.add_edge("human", "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("summarize_conversation", "agent")
+builder.add_edge("summarize_conversation", END)
 
 builder.add_conditional_edges(
     "agent",
