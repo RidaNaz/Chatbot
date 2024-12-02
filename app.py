@@ -85,7 +85,7 @@ def human_node(state: State):
 # Model
 
 model = ChatGoogleGenerativeAI(
-    model="gemini-pro",
+    model="gemini-1.5-flash",
     api_key=gemini_api_key,
     temperature=0.2
 )
@@ -94,43 +94,36 @@ model = model.bind_tools(tools+[RequestAssistance])
 
 # Summarization
 
-def summarize_conversation(state: State, message_count_threshold: int = 6) -> Dict[str, object]:
+def summarize_conversation(state: State) -> Dict[str, object]:
     """
     Summarizes the conversation if the number of messages exceeds the threshold.
     """
-    # Get the number of messages in the state
-    message_count = len(state.get("messages", []))
-
-    # If the number of messages has reached the threshold, create or update the summary
-    if message_count >= message_count_threshold:
+   
         # Get any existing summary
-        summary = state.get("summary", "")
+    summary = state.get("summary", "")
 
         # Create summarization prompt based on whether there is an existing summary
-        if summary:
-            summary_message = (
+    if summary:
+        summary_message = (
                 f"This is the summary of the conversation to date: {summary}\n\n"
                 "Extend the summary by taking into account the new messages above:"
-            )
-        else:
-            summary_message = "Create a summary of the conversation above:"
+        )
+    else:
+         summary_message = "Create a summary of the conversation above:"
 
         # Add the summarization prompt to the conversation history
-        messages = state["messages"] + [HumanMessage(content=summary_message)]
-        summary_response = model.invoke(messages)
+    messages = state["messages"] + [HumanMessage(content=summary_message)]
+    response = model.invoke(messages)
 
         # Save the updated summary in the state
-        state["summary"] = summary_response.content
+    state["summary"] = response.content
 
         # Delete all but the 2 most recent messages
-        delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-10]]
+    delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-10]]
 
-        return {
-            "messages": delete_messages
+    return {
+        "summarize_conversation": response.content, "messages": delete_messages
         }
-    
-    # If the message count hasn't reached the threshold, return the state as is
-    return {}
 
 
 # Conditional Function
@@ -205,7 +198,7 @@ builder.add_node(summarize_conversation)
 builder.add_edge(START, "agent")
 builder.add_edge("human", "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("summarize_conversation", END)
+builder.add_edge("summarize_conversation", "agent")
 
 builder.add_conditional_edges(
     "agent",
@@ -251,18 +244,15 @@ async def on_message(msg: cl.Message):
     final_answer = cl.Message(content="")
 
     # Stream the conversation using the graph
-    for msg, metadata in graph.stream(
-        {"messages": [HumanMessage(content=msg.content)]}, 
-        stream_mode="messages", 
-        config=RunnableConfig(callbacks=[cb], **config)
+    for response_msg, metadata in graph.stream(
+        {"messages": [HumanMessage(content=msg.content)]},
+        stream_mode="messages",
+        config=RunnableConfig(callbacks=[cb], **config),
     ):
-        # Check if the message has content and is not a HumanMessage
-        if msg.content and not isinstance(msg, HumanMessage):
-            # Exclude the summary-related messages
-            if metadata.get("langgraph_node") not in ["summarize_conversation"]:
-                # Send the message if it's a relevant node
-                if metadata["langgraph_node"] in ["agent", "tools", "human"]:
-                    await final_answer.stream_token(msg.content)
+        # Check if the response is from the agent and not a ToolMessage
+        if response_msg.content and isinstance(response_msg, AIMessage):
+            # Stream only the agent's response
+            await final_answer.stream_token(response_msg.content)
 
     # Send the final answer once streaming is complete
     await final_answer.send()
