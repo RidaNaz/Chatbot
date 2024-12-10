@@ -30,7 +30,7 @@ os.environ["LANGCHAIN_PROJECT"] = "chatbot"
 connection_kwargs = {"autocommit": True, "prepare_threshold": 0}
 
 # Create a persistent connection pool
-pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=20, kwargs=connection_kwargs)
+pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=50, kwargs=connection_kwargs)
 
 # Initialize PostgresSaver checkpointer
 checkpointer = PostgresSaver(pool)
@@ -48,16 +48,6 @@ tools = [search_tool]
 
 tool_node = ToolNode(tools=[search_tool])
 
-# Human Node
-
-class RequestAssistance(BaseModel):
-    """Escalate the conversation to an expert. Use this if you are unable to assist directly or if the user requires support beyond your permissions.
-
-    To use this function, relay the user's 'request' so the expert can provide the right guidance.
-    """
-
-    request: str
-
 # Helper Function
 def create_response(response: str, ai_message: AIMessage):
     if not ai_message.tool_calls:
@@ -67,36 +57,21 @@ def create_response(response: str, ai_message: AIMessage):
         tool_call_id=ai_message.tool_calls[0]["id"],
     )
 
-
-def human_node(state: State):
-    if not state["messages"]:
-        raise ValueError("State 'messages' is empty.")
-    new_messages = []
-    if not isinstance(state["messages"][-1], ToolMessage):
-        # Append a placeholder ToolMessage if needed
-        new_messages.append(
-            create_response("No response from human.", state["messages"][-1])
-        )
-    return {
-        "messages": new_messages,
-        "ask_human": False,
-    }
-
 # Model
 
 model = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-pro",
     api_key=gemini_api_key,
     temperature=0.2
 )
 
-model = model.bind_tools(tools+[RequestAssistance])
+model = model.bind_tools(tools)
 
 # Summarization
 
 def summarize_conversation(state: State) -> Dict[str, object]:
     """
-    Summarizes the conversation if the number of messages exceeds the threshold.
+    Summarizes the conversation if the number of messages exceeds 6 messages.
     """
    
         # Get any existing summary
@@ -119,14 +94,14 @@ def summarize_conversation(state: State) -> Dict[str, object]:
     state["summary"] = response.content
 
         # Delete all but the 2 most recent messages
-    delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-10]]
+    delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-2]]
 
     return {"messages": delete_messages}
 
 
 # Conditional Function
 
-def select_next_node(state: State) -> Union[Literal["tools", "human", "summarize_conversation"], str]:
+def select_next_node(state: State) -> Union[Literal["tools", "summarize_conversation"], str]:
     messages = state["messages"]
     last_message = messages[-1]
 
@@ -137,10 +112,6 @@ def select_next_node(state: State) -> Union[Literal["tools", "human", "summarize
     # If the LLM makes a tool call, route to the "tools" node
     if last_message.tool_calls:
         return "tools"
-    
-    # If a human input is required, route to the "human" node
-    if state.get("ask_human", False):
-        return "human"
     
     # Otherwise, route to "final" or end
     return END
@@ -161,24 +132,18 @@ def call_model(state: State, config: RunnableConfig) -> Dict[str, object]:
         system_message = f"Summary of conversation earlier: {summary}"
         messages = [SystemMessage(content=system_message)] + messages
 
+    config = {"configurable": {"thread_id": cl.context.session.id}}
     # Safely invoke the model
     try:
         response = model.invoke(messages, config)
     except Exception as e:
         raise RuntimeError(f"Error invoking the model: {e}")
 
-    # Check for tool_calls and determine if human assistance is required
-    ask_human = (
-        hasattr(response, "tool_calls") 
-        and response.tool_calls
-        and response.tool_calls[0].get("name") == RequestAssistance.__name__
-    )
-
     # Append the response to messages
     messages.append(response)
 
-    # Return the updated state with messages and ask_human flag
-    return {"messages": messages[-1], "ask_human": ask_human}
+    # Return the updated state with messages
+    return {"messages": messages[-1]}
 
 # Build Graph
 
@@ -187,27 +152,23 @@ builder = StateGraph(State)
 builder.add_node("agent", call_model)
 builder.add_node("tools", tool_node)
 
-# add human node
-builder.add_node("human", human_node)
-
 # add summary node
 builder.add_node(summarize_conversation)
 
 builder.add_edge(START, "agent")
-builder.add_edge("human", "agent")
 builder.add_edge("tools", "agent")
 builder.add_edge("summarize_conversation", END)
 
 builder.add_conditional_edges(
     "agent",
     select_next_node,
-    {"human": "human", "summarize_conversation": "summarize_conversation", "tools": "tools", END: END},
+    {"summarize_conversation": "summarize_conversation", "tools": "tools", END: END},
 )
 
-graph = builder.compile(checkpointer=checkpointer, interrupt_before=["human"])
+graph = builder.compile(checkpointer=checkpointer)
 
 
-####
+#### Chainlit
 
 @cl.set_starters
 async def set_starters():
@@ -242,7 +203,7 @@ async def on_message(msg: cl.Message):
     final_answer = cl.Message(content="")
 
     # Stream the conversation using the graph
-    for response_msg, metadata in graph.stream(
+    for response_msg in graph.stream(
         {"messages": [HumanMessage(content=msg.content)]},
         stream_mode="messages",
         config=RunnableConfig(callbacks=[cb], **config),
