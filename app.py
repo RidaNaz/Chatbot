@@ -157,7 +157,7 @@ builder.add_node(summarize_conversation)
 
 builder.add_edge(START, "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("summarize_conversation", END)
+builder.add_edge("summarize_conversation", "agent")
 
 builder.add_conditional_edges(
     "agent",
@@ -203,7 +203,7 @@ async def on_message(msg: cl.Message):
     final_answer = cl.Message(content="")
 
     # Stream the conversation using the graph
-    for response_msg in graph.stream(
+    for response_msg, metadata in graph.stream(
         {"messages": [HumanMessage(content=msg.content)]},
         stream_mode="messages",
         config=RunnableConfig(callbacks=[cb], **config),
