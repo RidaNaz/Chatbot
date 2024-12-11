@@ -36,6 +36,8 @@ pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=50, kwargs=connection_kwarg
 checkpointer = PostgresSaver(pool)
 checkpointer.setup()  # Ensure database tables are set up
 
+config = {"configurable": {"thread_id": "1"}}
+
 # State
 
 class State(MessagesState):
@@ -69,31 +71,38 @@ model = model.bind_tools(tools)
 
 # Summarization
 
-def summarize_conversation(state: State) -> Dict[str, object]:
+def summarize_conversation(state: State) -> State:
     """
     Summarizes the conversation if the number of messages exceeds 6 messages.
+    
+    Args:
+        state (State): The current conversation state.
+        model (object): The model to use for summarization.
+
+    Returns:
+        Dict[str, object]: A dictionary containing updated messages.
     """
    
-        # Get any existing summary
+    # Get any existing summary
     summary = state.get("summary", "")
 
-        # Create summarization prompt based on whether there is an existing summary
+    # Create summarization prompt based on whether there is an existing summary
     if summary:
         summary_message = (
-                f"This is the summary of the conversation to date: {summary}\n\n"
-                "Extend the summary by taking into account the new messages above:"
+            f"This is the summary of the conversation to date: {summary}\n\n"
+            "Extend the summary by taking into account the new messages above:"
         )
     else:
-         summary_message = "Create a summary of the conversation above:"
+        summary_message = "Create a summary of the conversation above:"
 
-        # Add the summarization prompt to the conversation history
+    # Add the summarization prompt to the conversation history
     messages = state["messages"] + [HumanMessage(content=summary_message)]
     response = model.invoke(messages)
 
-        # Save the updated summary in the state
+    # Save the updated summary in the state
     state["summary"] = response.content
 
-        # Delete all but the 2 most recent messages
+    # Delete all but the 2 most recent messages
     delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-2]]
 
     return {"messages": delete_messages}
@@ -132,7 +141,6 @@ def call_model(state: State, config: RunnableConfig) -> Dict[str, object]:
         system_message = f"Summary of conversation earlier: {summary}"
         messages = [SystemMessage(content=system_message)] + messages
 
-    config = {"configurable": {"thread_id": cl.context.session.id}}
     # Safely invoke the model
     try:
         response = model.invoke(messages, config)
@@ -157,7 +165,7 @@ builder.add_node(summarize_conversation)
 
 builder.add_edge(START, "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("summarize_conversation", "agent")
+builder.add_edge("summarize_conversation", END)
 
 builder.add_conditional_edges(
     "agent",
