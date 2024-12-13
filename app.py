@@ -1,7 +1,7 @@
 import os
 import chainlit as cl
 from dotenv import load_dotenv
-from typing import Literal, Dict, Union
+from typing import Literal, Dict, Union, Optional
 from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -105,8 +105,6 @@ def summarize_conversation(state: State) -> State:
     # Delete all but the 2 most recent messages
     delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-2]]
 
-    return {"messages": delete_messages}
-
 
 # Conditional Function
 
@@ -177,6 +175,17 @@ graph = builder.compile(checkpointer=checkpointer)
 
 
 #### Chainlit
+
+@cl.password_auth_callback
+def auth_callback(username: str, password: str):
+    # Fetch the user matching username from your database
+    # and compare the hashed password with the value stored in the database
+    if (username, password) == ("Rida Naz", "user"):
+        return cl.User(
+            identifier="Rida Naz", metadata={"role": "user", "provider": "credentials"}
+        )
+    else:
+        return None
 
 @cl.set_starters
 async def set_starters():

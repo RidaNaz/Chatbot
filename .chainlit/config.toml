@@ -54,7 +54,7 @@ edit_message = true
 
 [UI]
 # Name of the assistant.
-name = "Chatbot"
+name = "Naz Bot"
 
 # Description of the assistant. This is used for HTML tags.
 # description = "LangGraph Chatbot by Rida Naz"
