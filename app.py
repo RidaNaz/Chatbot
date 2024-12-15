@@ -11,6 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Tool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import MessagesState
+from io import BytesIO
 from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
 
@@ -221,3 +222,16 @@ async def on_message(msg: cl.Message):
 
     # Send the final answer once streaming is complete
     await final_answer.send()
+
+@cl.on_audio_chunk
+async def on_audio_chunk(chunk: cl.AudioChunk):
+    if chunk.isStart:
+        buffer = BytesIO()
+        # This is required for whisper to recognize the file type
+        buffer.name = f"input_audio.{chunk.mimeType.split('/')[1]}"
+        # Initialize the session for a new audio stream
+        cl.user_session.set("audio_buffer", buffer)
+        cl.user_session.set("audio_mime_type", chunk.mimeType)
+
+    # Write the chunks to a buffer and transcribe the whole audio at the end
+    cl.user_session.get("audio_buffer").write(chunk.data)
