@@ -16,11 +16,11 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-gemini_api_key = os.getenv("GEMINI_API_KEY")
-LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 NEON_DB_URI = os.getenv("NEON_DB_URI")
 
 os.environ["TAVILY_API_KEY"]= os.getenv("TAVILY_API_KEY")
+os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_PROJECT"] = "chatbot"
 
@@ -36,8 +36,6 @@ pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=50, kwargs=connection_kwarg
 checkpointer = PostgresSaver(pool)
 checkpointer.setup()  # Ensure database tables are set up
 
-config = {"configurable": {"thread_id": "1"}}
-
 # State
 
 class State(MessagesState):
@@ -45,25 +43,16 @@ class State(MessagesState):
 
 # Tavily Search Tool
 
-search_tool = TavilySearchResults(max_results=2)
+search_tool = TavilySearchResults(max_results=2, search_depth="advanced")
 tools = [search_tool]
 
 tool_node = ToolNode(tools=[search_tool])
-
-# Helper Function
-def create_response(response: str, ai_message: AIMessage):
-    if not ai_message.tool_calls:
-        raise ValueError("No tool calls found in the AI message.")
-    return ToolMessage(
-        content=response,
-        tool_call_id=ai_message.tool_calls[0]["id"],
-    )
 
 # Model
 
 model = ChatGoogleGenerativeAI(
     model="gemini-pro",
-    api_key=gemini_api_key,
+    api_key=GEMINI_API_KEY,
     temperature=0.2
 )
 
@@ -125,7 +114,7 @@ def select_next_node(state: State) -> Union[Literal["tools", "summarize_conversa
 
 # Invoke Messages
 
-def call_model(state: State, config: RunnableConfig) -> Dict[str, object]:
+def call_model(state: State) -> Dict[str, object]:
     # Ensure state contains 'messages'
     if "messages" not in state:
         raise ValueError("State must contain a 'messages' key.")
@@ -141,7 +130,7 @@ def call_model(state: State, config: RunnableConfig) -> Dict[str, object]:
 
     # Safely invoke the model
     try:
-        response = model.invoke(messages, config)
+        response = model.invoke(messages)
     except Exception as e:
         raise RuntimeError(f"Error invoking the model: {e}")
 
