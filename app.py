@@ -15,8 +15,6 @@ from io import BytesIO
 from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
 
-load_dotenv()
-
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 NEON_DB_URI = os.getenv("NEON_DB_URI")
 
