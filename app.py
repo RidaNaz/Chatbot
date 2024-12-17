@@ -11,6 +11,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import MessagesState
 from io import BytesIO
+from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
 
@@ -22,17 +23,19 @@ os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_PROJECT"] = "chatbot"
 
-# Postgres DB
+# # Postgres DB
 
-# Connection pool for efficient database access
-connection_kwargs = {"autocommit": True, "prepare_threshold": 0}
+# # Connection pool for efficient database access
+# connection_kwargs = {"autocommit": True, "prepare_threshold": 0}
 
-# Create a persistent connection pool
-pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=30, kwargs=connection_kwargs)
+# # Create a persistent connection pool
+# pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=30, kwargs=connection_kwargs)
 
-# Initialize PostgresSaver checkpointer
-checkpointer = PostgresSaver(pool)
-checkpointer.setup()  # Ensure database tables are set up
+# # Initialize PostgresSaver checkpointer
+# checkpointer = PostgresSaver(pool)
+# checkpointer.setup()  # Ensure database tables are set up
+
+memory = MemorySaver()
 
 # State
 
@@ -60,7 +63,7 @@ tool_node = ToolNode(tools=[search_tool])
 # Model
 
 model = ChatGoogleGenerativeAI(
-    model="gemini-pro",
+    model="gemini-1.5-flash",
     api_key=GEMINI_API_KEY,
     temperature=0.2
 )
@@ -209,7 +212,7 @@ builder.add_conditional_edges(
 )
 
 graph = builder.compile(
-    checkpointer=checkpointer,
+    checkpointer=memory,
     # We interrupt before 'human' here instead.
     interrupt_before=["doctor"]
     )
@@ -273,22 +276,6 @@ async def on_message(msg: cl.Message):
 
     # Send the final answer once streaming is complete
     await final_answer.send()
-    
-    
-@cl.action_callback("Ask Doctor")
-async def on_action(action):
-    await cl.Message(content=f"Executed {action.name}").send()
-    # Optionally remove the action button from the chatbot user interface
-    await action.remove()
-
-@cl.on_chat_start
-async def start():
-    # Sending an action button within a chatbot message
-    actions = [
-        cl.Action(name="Ask Doctor", value="example_value", description="Click me!")
-    ]
-
-    await cl.Message(content="Interact with this action button:", actions=actions).send()
 
 @cl.on_audio_chunk
 async def on_audio_chunk(chunk: cl.AudioChunk):
