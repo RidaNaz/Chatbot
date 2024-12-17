@@ -38,19 +38,19 @@ checkpointer.setup()  # Ensure database tables are set up
 
 class State(MessagesState):
     summary: str
-    ask_human: bool
+    ask_doctor: bool
     
 # Human Assistance
     
 class RequestAssistance(BaseModel):
-    """Escalate the conversation to an expert. Use this if you are unable to assist directly or if the user requires support beyond your permissions.
+    """Escalate the conversation to an expert Doctor. Use this if you are unable to assist directly or if the user requires support beyond your permissions.
 
-    To use this function, relay the user's 'request' so the expert can provide the right guidance.
+    To use this function, relay the user's 'request' so the expert Doctor can provide the right guidance.
     """
 
     request: str
 
-# Tavily Search Tool
+# Tavily Search Tool Node
 
 search_tool = TavilySearchResults(max_results=2, search_depth="advanced")
 tools = [search_tool]
@@ -77,20 +77,20 @@ def create_response(response: str, ai_message: AIMessage):
         tool_call_id=ai_message.tool_calls[0]["id"],
     )
 
-def human_node(state: State):
+def doctor_node(state: State):
     new_messages = []
     if not isinstance(state["messages"][-1], ToolMessage):
         # Typically, the user will have updated the state during the interrupt.
         # If they choose not to, we will include a placeholder ToolMessage to
         # let the LLM continue.
         new_messages.append(
-            create_response("No response from human.", state["messages"][-1])
+            create_response("No response from doctor.", state["messages"][-1])
         )
     return {
         # Append the new messages
         "messages": new_messages,
         # Unset the flag
-        "ask_human": False,
+        "ask_doctor": False,
     }
 
 # Summarization
@@ -132,10 +132,10 @@ def summarize_conversation(state: State) -> State:
 
 # Conditional Function
 
-def select_next_node(state: State) -> Union[Literal["tools", "summarize", "human"], str]:
+def select_next_node(state: State) -> Union[Literal["tools", "summarize", "doctor"], str]:
     # Check if the conversation requires human intervention
-    if state["ask_human"]:
-        return "human"
+    if state["ask_doctor"]:
+        return "doctor"
 
     messages = state["messages"]
     last_message = messages[-1]
@@ -171,13 +171,13 @@ def call_model(state: State) -> Dict[str, object]:
     # Safely invoke the model
     try:
         response = model.invoke(messages)
-        ask_human = False
+        ask_doctor = False
 
         if (
             response.tool_calls
             and response.tool_calls[0]["name"] == RequestAssistance.__name__
         ):
-            ask_human = True
+            ask_doctor = True
 
     except Exception as e:
         raise RuntimeError(f"Error invoking the model: {e}")
@@ -186,7 +186,7 @@ def call_model(state: State) -> Dict[str, object]:
     messages.append(response)
 
     # Return the updated state with messages
-    return {"messages": messages[-1], "ask_human": ask_human}
+    return {"messages": messages[-1], "ask_doctor": ask_doctor}
 
 # Build Graph
 
@@ -194,24 +194,24 @@ builder = StateGraph(State)
 
 builder.add_node("agent", call_model)
 builder.add_node("tools", tool_node)
-builder.add_node("human", human_node)
+builder.add_node("doctor", doctor_node)
 builder.add_node("summarize", summarize_conversation)
 
 builder.add_edge(START, "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("human", "agent")
+builder.add_edge("doctor", "agent")
 builder.add_edge("summarize", END)
 
 builder.add_conditional_edges(
     "agent",
     select_next_node,
-    {"summarize": "summarize", "human": "human", "tools": "tools", END: END},
+    {"summarize": "summarize", "doctor": "doctor", "tools": "tools", END: END},
 )
 
 graph = builder.compile(
     checkpointer=checkpointer,
     # We interrupt before 'human' here instead.
-    interrupt_before=["human"]
+    interrupt_before=["doctor"]
     )
 
 
