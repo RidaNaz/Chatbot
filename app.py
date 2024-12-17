@@ -1,6 +1,5 @@
 import os
 import chainlit as cl
-from dotenv import load_dotenv
 from typing import Literal, Dict, Union, Optional
 from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -39,6 +38,17 @@ checkpointer.setup()  # Ensure database tables are set up
 
 class State(MessagesState):
     summary: str
+    ask_human: bool
+    
+# Human Assistance
+    
+class RequestAssistance(BaseModel):
+    """Escalate the conversation to an expert. Use this if you are unable to assist directly or if the user requires support beyond your permissions.
+
+    To use this function, relay the user's 'request' so the expert can provide the right guidance.
+    """
+
+    request: str
 
 # Tavily Search Tool
 
@@ -55,7 +65,33 @@ model = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
-model = model.bind_tools(tools)
+# We can bind the llm to a tool definition, a pydantic model, or a json schemahi
+model = model.bind_tools(tools + [RequestAssistance])
+
+# Human Node
+
+# Helper Function
+def create_response(response: str, ai_message: AIMessage):
+    return ToolMessage(
+        content=response,
+        tool_call_id=ai_message.tool_calls[0]["id"],
+    )
+
+def human_node(state: State):
+    new_messages = []
+    if not isinstance(state["messages"][-1], ToolMessage):
+        # Typically, the user will have updated the state during the interrupt.
+        # If they choose not to, we will include a placeholder ToolMessage to
+        # let the LLM continue.
+        new_messages.append(
+            create_response("No response from human.", state["messages"][-1])
+        )
+    return {
+        # Append the new messages
+        "messages": new_messages,
+        # Unset the flag
+        "ask_human": False,
+    }
 
 # Summarization
 
@@ -96,13 +132,17 @@ def summarize_conversation(state: State) -> State:
 
 # Conditional Function
 
-def select_next_node(state: State) -> Union[Literal["tools", "summarize_conversation"], str]:
+def select_next_node(state: State) -> Union[Literal["tools", "summarize", "human"], str]:
+    # Check if the conversation requires human intervention
+    if state["ask_human"]:
+        return "human"
+
     messages = state["messages"]
     last_message = messages[-1]
 
     # If there are more than six messages, route to "summarize_conversation"
     if len(messages) > 6:
-        return "summarize_conversation"
+        return "summarize"
     
     # If the LLM makes a tool call, route to the "tools" node
     if last_message.tool_calls:
@@ -114,6 +154,7 @@ def select_next_node(state: State) -> Union[Literal["tools", "summarize_conversa
 # Invoke Messages
 
 def call_model(state: State) -> Dict[str, object]:
+
     # Ensure state contains 'messages'
     if "messages" not in state:
         raise ValueError("State must contain a 'messages' key.")
@@ -130,6 +171,14 @@ def call_model(state: State) -> Dict[str, object]:
     # Safely invoke the model
     try:
         response = model.invoke(messages)
+        ask_human = False
+
+        if (
+            response.tool_calls
+            and response.tool_calls[0]["name"] == RequestAssistance.__name__
+        ):
+            ask_human = True
+
     except Exception as e:
         raise RuntimeError(f"Error invoking the model: {e}")
 
@@ -137,7 +186,7 @@ def call_model(state: State) -> Dict[str, object]:
     messages.append(response)
 
     # Return the updated state with messages
-    return {"messages": messages[-1]}
+    return {"messages": messages[-1], "ask_human": ask_human}
 
 # Build Graph
 
@@ -145,21 +194,25 @@ builder = StateGraph(State)
 
 builder.add_node("agent", call_model)
 builder.add_node("tools", tool_node)
-
-# add summary node
-builder.add_node(summarize_conversation)
+builder.add_node("human", human_node)
+builder.add_node("summarize", summarize_conversation)
 
 builder.add_edge(START, "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("summarize_conversation", END)
+builder.add_edge("human", "agent")
+builder.add_edge("summarize", END)
 
 builder.add_conditional_edges(
     "agent",
     select_next_node,
-    {"summarize_conversation": "summarize_conversation", "tools": "tools", END: END},
+    {"summarize": "summarize", "human": "human", "tools": "tools", END: END},
 )
 
-graph = builder.compile(checkpointer=checkpointer)
+graph = builder.compile(
+    checkpointer=checkpointer,
+    # We interrupt before 'human' here instead.
+    interrupt_before=["human"]
+    )
 
 
 #### Chainlit
