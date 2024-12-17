@@ -273,6 +273,22 @@ async def on_message(msg: cl.Message):
 
     # Send the final answer once streaming is complete
     await final_answer.send()
+    
+    
+@cl.action_callback("Ask Doctor")
+async def on_action(action):
+    await cl.Message(content=f"Executed {action.name}").send()
+    # Optionally remove the action button from the chatbot user interface
+    await action.remove()
+
+@cl.on_chat_start
+async def start():
+    # Sending an action button within a chatbot message
+    actions = [
+        cl.Action(name="Ask Doctor", value="example_value", description="Click me!")
+    ]
+
+    await cl.Message(content="Interact with this action button:", actions=actions).send()
 
 @cl.on_audio_chunk
 async def on_audio_chunk(chunk: cl.AudioChunk):
