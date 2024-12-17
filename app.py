@@ -28,7 +28,7 @@ os.environ["LANGCHAIN_PROJECT"] = "chatbot"
 connection_kwargs = {"autocommit": True, "prepare_threshold": 0}
 
 # Create a persistent connection pool
-pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=50, kwargs=connection_kwargs)
+pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=30, kwargs=connection_kwargs)
 
 # Initialize PostgresSaver checkpointer
 checkpointer = PostgresSaver(pool)
@@ -84,7 +84,7 @@ def doctor_node(state: State):
         # If they choose not to, we will include a placeholder ToolMessage to
         # let the LLM continue.
         new_messages.append(
-            create_response("No response from doctor.", state["messages"][-1])
+            create_response("No response from Doctor.", state["messages"][-1])
         )
     return {
         # Append the new messages
