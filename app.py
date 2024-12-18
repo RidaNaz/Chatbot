@@ -1,6 +1,6 @@
 import os
 import chainlit as cl
-from typing import Literal, Dict, Union, Optional
+from typing import Literal, Union
 from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -234,24 +234,24 @@ def auth_callback(username: str, password: str):
 async def set_starters():
     return [
         cl.Starter(
-            label="Explore AI tools for productivity",
-            message="Recommend some AI-powered tools that can help improve productivity, and explain how they work in simple terms.",
+            label="Discover symptoms and remedies",
+            message="What are the common symptoms of seasonal allergies, and what remedies can help alleviate them?",
             icon="/public/search.png",
             ),
         cl.Starter(
-            label="Plan a tech meetup discussion",
-            message="Suggest some engaging discussion topics for a tech meetup. I want them to be beginner-friendly but still interesting for tech enthusiasts.",
+            label="Learn about fitness for heart health",
+            message="Recommend some beginner-friendly exercises that promote heart health. Explain their benefits in simple terms.",
             icon="/public/idea.png",
             ),
 
         cl.Starter(
-            label="Basics of generative AI",
-            message="Explain the basics of generative AI and its real-world applications. Keep it concise and easy to understand.",
+             label="Understand common medications",
+            message="Can you explain the purpose of common over-the-counter medications like ibuprofen or acetaminophen, and when to use them?",
             icon="/public/genai.png",
             ),
         cl.Starter(
-            label="New automation script for workflows",
-            message="Brainstorm an automation script idea to simplify repetitive tasks in my daily workflow. Focus on creativity and practicality.",
+            label="Plan a healthy diet for diabetics",
+            message="Suggest a simple meal plan for someone managing Type 2 diabetes. Include tips on portion control and healthy food swaps.",
             icon="/public/pen.png",
             )
         ]
@@ -276,15 +276,15 @@ async def on_message(msg: cl.Message):
     # Send the final answer once streaming is complete
     await final_answer.send()
 
-# @cl.on_audio_chunk
-# async def on_audio_chunk(chunk: cl.AudioChunk):
-#     if chunk.isStart:
-#         buffer = BytesIO()
-#         # This is required for whisper to recognize the file type
-#         buffer.name = f"input_audio.{chunk.mimeType.split('/')[1]}"
-#         # Initialize the session for a new audio stream
-#         cl.user_session.set("audio_buffer", buffer)
-#         cl.user_session.set("audio_mime_type", chunk.mimeType)
+@cl.on_audio_chunk
+async def on_audio_chunk(chunk: cl.AudioChunk):
+    if chunk.isStart:
+        buffer = BytesIO()
+        # This is required for whisper to recognize the file type
+        buffer.name = f"input_audio.{chunk.mimeType.split('/')[1]}"
+        # Initialize the session for a new audio stream
+        cl.user_session.set("audio_buffer", buffer)
+        cl.user_session.set("audio_mime_type", chunk.mimeType)
 
-#     # Write the chunks to a buffer and transcribe the whole audio at the end
-#     cl.user_session.get("audio_buffer").write(chunk.data)
+    # Write the chunks to a buffer and transcribe the whole audio at the end
+    cl.user_session.get("audio_buffer").write(chunk.data)
