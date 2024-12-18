@@ -263,10 +263,10 @@ async def on_message(msg: cl.Message):
     final_answer = cl.Message(content="")
 
     # Stream the conversation using the graph
-    async for response_msg, metadata in graph.astream_events(
+    for response_msg, metadata in graph.stream(
         {"messages": [HumanMessage(content=msg.content)]},
+        stream_mode="messages",
         config=RunnableConfig(callbacks=[cb], **config),
-        version="v2",
     ):
         # Check if the response is from the agent and not a ToolMessage
         if response_msg.content and isinstance(response_msg, AIMessage):
