@@ -98,7 +98,7 @@ def doctor_node(state: State):
 
 # Summarization
 
-def summarize_conversation(state: State) -> State:
+def summarize_conversation(state: State):
     """
     Summarizes the conversation if the number of messages exceeds 6 messages.
     
@@ -126,11 +126,10 @@ def summarize_conversation(state: State) -> State:
     messages = state["messages"] + [HumanMessage(content=summary_message)]
     response = model.invoke(messages)
 
-    # Save the updated summary in the state
-    state["summary"] = response.content
-
     # Delete all but the 2 most recent messages
     delete_messages = [RemoveMessage(id=getattr(m, "id", None)) for m in state["messages"][:-2]]
+    
+    return {"summary": response.content, "messages": delete_messages}
 
 
 # Conditional Function
@@ -156,7 +155,7 @@ def select_next_node(state: State) -> Union[Literal["tools", "summarize", "docto
 
 # Invoke Messages
 
-def call_model(state: State) -> Dict[str, object]:
+def call_model(state: State, config: RunnableConfig):
 
     # Ensure state contains 'messages'
     if "messages" not in state:
@@ -173,7 +172,7 @@ def call_model(state: State) -> Dict[str, object]:
 
     # Safely invoke the model
     try:
-        response = model.invoke(messages)
+        response = model.invoke(messages, config)
         ask_doctor = False
 
         if (
@@ -264,10 +263,10 @@ async def on_message(msg: cl.Message):
     final_answer = cl.Message(content="")
 
     # Stream the conversation using the graph
-    for response_msg, metadata in graph.stream(
+    async for response_msg, metadata in graph.astream_events(
         {"messages": [HumanMessage(content=msg.content)]},
-        stream_mode="messages",
         config=RunnableConfig(callbacks=[cb], **config),
+        version="v2",
     ):
         # Check if the response is from the agent and not a ToolMessage
         if response_msg.content and isinstance(response_msg, AIMessage):
@@ -277,15 +276,15 @@ async def on_message(msg: cl.Message):
     # Send the final answer once streaming is complete
     await final_answer.send()
 
-@cl.on_audio_chunk
-async def on_audio_chunk(chunk: cl.AudioChunk):
-    if chunk.isStart:
-        buffer = BytesIO()
-        # This is required for whisper to recognize the file type
-        buffer.name = f"input_audio.{chunk.mimeType.split('/')[1]}"
-        # Initialize the session for a new audio stream
-        cl.user_session.set("audio_buffer", buffer)
-        cl.user_session.set("audio_mime_type", chunk.mimeType)
+# @cl.on_audio_chunk
+# async def on_audio_chunk(chunk: cl.AudioChunk):
+#     if chunk.isStart:
+#         buffer = BytesIO()
+#         # This is required for whisper to recognize the file type
+#         buffer.name = f"input_audio.{chunk.mimeType.split('/')[1]}"
+#         # Initialize the session for a new audio stream
+#         cl.user_session.set("audio_buffer", buffer)
+#         cl.user_session.set("audio_mime_type", chunk.mimeType)
 
-    # Write the chunks to a buffer and transcribe the whole audio at the end
-    cl.user_session.get("audio_buffer").write(chunk.data)
+#     # Write the chunks to a buffer and transcribe the whole audio at the end
+#     cl.user_session.get("audio_buffer").write(chunk.data)
