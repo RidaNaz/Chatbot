@@ -1,4 +1,5 @@
 import os
+from google.genai import Client
 import chainlit as cl
 from typing import Literal, Union
 from psycopg_pool import ConnectionPool
@@ -15,9 +16,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 NEON_DB_URI = os.getenv("NEON_DB_URI")
 
+os.environ['GOOGLE_API_KEY'] = os.getenv('GOOGLE_API_KEY')
 os.environ["TAVILY_API_KEY"]= os.getenv("TAVILY_API_KEY")
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
@@ -64,7 +65,6 @@ tool_node = ToolNode(tools=[search_tool])
 
 model = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
-    api_key=GEMINI_API_KEY,
     temperature=0.2
 )
 
@@ -245,7 +245,7 @@ async def set_starters():
             ),
 
         cl.Starter(
-             label="Understand common medications",
+             label="Common medications",
             message="Can you explain the purpose of common over-the-counter medications like ibuprofen or acetaminophen, and when to use them?",
             icon="/public/genai.png",
             ),

@@ -14,3 +14,8 @@ langchain-core==0.3.21
 pydantic==2.8.2
 pydantic-settings==2.5.2
 packaging==23.2
+google-generativeai
+SpeechRecognition==3.8.1
+pyttsx3==2.90
+pyaudio
+setuptools
