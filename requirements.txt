@@ -1,6 +1,5 @@
 langsmith
 langgraph
-langgraph-cli
 langchain_google_genai
 langgraph-checkpoint-postgres
 psycopg
@@ -8,7 +7,6 @@ psycopg-pool
 psycopg-binary
 tavily-python
 langchain_community
-python-dotenv
 chainlit
 langchain-core==0.3.21
 pydantic==2.8.2
