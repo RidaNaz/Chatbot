@@ -1,18 +1,15 @@
 import os
-from google.genai import Client
 import chainlit as cl
+from io import BytesIO
 from typing import Literal, Union
-from psycopg_pool import ConnectionPool
-from langgraph.checkpoint.postgres import PostgresSaver
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, RemoveMessage
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import MessagesState
-from io import BytesIO
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 # NOTE: you must use langchain-core >= 0.3 with Pydantic v2
 
@@ -64,7 +61,7 @@ tool_node = ToolNode(tools=[search_tool])
 # Model
 
 model = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-pro",
     temperature=0.2
 )
 
