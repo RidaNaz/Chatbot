@@ -1,97 +1,69 @@
 import os
 import chainlit as cl
-from io import BytesIO
 from typing import Literal, Union
+from langchain_core.tools import tool
+from psycopg_pool import ConnectionPool
 from langgraph.prebuilt import ToolNode
-from langchain.schema.runnable.config import RunnableConfig
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage, RemoveMessage
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import MessagesState
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph, START
+from langgraph.checkpoint.postgres import PostgresSaver
 from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import BaseModel
-# NOTE: you must use langchain-core >= 0.3 with Pydantic v2
+from langchain.schema.runnable.config import RunnableConfig
+from langchain_community.utilities import GoogleSerperAPIWrapper
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, RemoveMessage
+# from langgraph.checkpoint.memory import MemorySaver
+
 
 NEON_DB_URI = os.getenv("NEON_DB_URI")
 
 os.environ['GOOGLE_API_KEY'] = os.getenv('GOOGLE_API_KEY')
-os.environ["TAVILY_API_KEY"]= os.getenv("TAVILY_API_KEY")
+os.environ['SERPER_API_KEY'] = os.getenv('SERPER_API_KEY')
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_PROJECT"] = "chatbot"
 
-# # Postgres DB
+# Postgres DB
 
-# # Connection pool for efficient database access
-# connection_kwargs = {"autocommit": True, "prepare_threshold": 0}
+# Connection pool for efficient database access
+connection_kwargs = {"autocommit": True, "prepare_threshold": 0}
 
-# # Create a persistent connection pool
-# pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=30, kwargs=connection_kwargs)
+# Create a persistent connection pool
+pool = ConnectionPool(conninfo=NEON_DB_URI, max_size=30, kwargs=connection_kwargs)
 
-# # Initialize PostgresSaver checkpointer
-# checkpointer = PostgresSaver(pool)
-# checkpointer.setup()  # Ensure database tables are set up
+# Initialize PostgresSaver checkpointer
+checkpointer = PostgresSaver(pool)
+checkpointer.setup()  # Ensure database tables are set up
 
-memory = MemorySaver()
+# memory = MemorySaver()
 
 # State
 
 class State(MessagesState):
     summary: str
-    ask_doctor: bool
-    
-# Human Assistance
-    
-class RequestAssistance(BaseModel):
-    """Escalate the conversation to an expert Doctor. Use this if you are unable to assist directly or if the user requires support beyond your permissions.
 
-    To use this function, relay the user's 'request' so the expert Doctor can provide the right guidance.
-    """
+# SerpAPI Search Tool Node
 
-    request: str
+search_tool = GoogleSerperAPIWrapper()
 
-# Tavily Search Tool Node
+# Define a tool using the correct decorator
+@tool
+def search(query: str) -> str:
+    """Search the web using SerpAPI."""
+    return search_tool.run(query)
 
-search_tool = TavilySearchResults(max_results=2, search_depth="advanced")
-tools = [search_tool]
+tools = [search]
 
-tool_node = ToolNode(tools=[search_tool])
+tool_node = ToolNode(tools=[search])
 
 # Model
 
 model = ChatGoogleGenerativeAI(
-    model="gemini-pro",
+    model="gemini-1.5-pro",
     temperature=0.2
 )
 
-# We can bind the llm to a tool definition, a pydantic model, or a json schemahi
-model = model.bind_tools(tools + [RequestAssistance])
-
-# Human Node
-
-# Helper Function
-def create_response(response: str, ai_message: AIMessage):
-    return ToolMessage(
-        content=response,
-        tool_call_id=ai_message.tool_calls[0]["id"],
-    )
-
-def doctor_node(state: State):
-    new_messages = []
-    if not isinstance(state["messages"][-1], ToolMessage):
-        # Typically, the user will have updated the state during the interrupt.
-        # If they choose not to, we will include a placeholder ToolMessage to
-        # let the LLM continue.
-        new_messages.append(
-            create_response("No response from Doctor.", state["messages"][-1])
-        )
-    return {
-        # Append the new messages
-        "messages": new_messages,
-        # Unset the flag
-        "ask_doctor": False,
-    }
+# We can bind the llm to a tool definition
+model = model.bind_tools(tools)
 
 # Summarization
 
@@ -131,10 +103,7 @@ def summarize_conversation(state: State):
 
 # Conditional Function
 
-def select_next_node(state: State) -> Union[Literal["tools", "summarize", "doctor"], str]:
-    # Check if the conversation requires human intervention
-    if state["ask_doctor"]:
-        return "doctor"
+def select_next_node(state: State) -> Union[Literal["tools", "summarize"], str]:
 
     messages = state["messages"]
     last_message = messages[-1]
@@ -170,13 +139,6 @@ def call_model(state: State, config: RunnableConfig):
     # Safely invoke the model
     try:
         response = model.invoke(messages, config)
-        ask_doctor = False
-
-        if (
-            response.tool_calls
-            and response.tool_calls[0]["name"] == RequestAssistance.__name__
-        ):
-            ask_doctor = True
 
     except Exception as e:
         raise RuntimeError(f"Error invoking the model: {e}")
@@ -185,7 +147,7 @@ def call_model(state: State, config: RunnableConfig):
     messages.append(response)
 
     # Return the updated state with messages
-    return {"messages": messages[-1], "ask_doctor": ask_doctor}
+    return {"messages": messages[-1]}
 
 # Build Graph
 
@@ -193,25 +155,19 @@ builder = StateGraph(State)
 
 builder.add_node("agent", call_model)
 builder.add_node("tools", tool_node)
-builder.add_node("doctor", doctor_node)
 builder.add_node("summarize", summarize_conversation)
 
 builder.add_edge(START, "agent")
 builder.add_edge("tools", "agent")
-builder.add_edge("doctor", "agent")
 builder.add_edge("summarize", END)
 
 builder.add_conditional_edges(
     "agent",
     select_next_node,
-    {"summarize": "summarize", "doctor": "doctor", "tools": "tools", END: END},
+    {"summarize": "summarize", "tools": "tools", END: END},
 )
 
-graph = builder.compile(
-    checkpointer=memory,
-    # We interrupt before 'human' here instead.
-    interrupt_before=["doctor"]
-    )
+graph = builder.compile(checkpointer=checkpointer)
 
 
 #### Chainlit
@@ -272,16 +228,3 @@ async def on_message(msg: cl.Message):
 
     # Send the final answer once streaming is complete
     await final_answer.send()
-
-@cl.on_audio_chunk
-async def on_audio_chunk(chunk: cl.AudioChunk):
-    if chunk.isStart:
-        buffer = BytesIO()
-        # This is required for whisper to recognize the file type
-        buffer.name = f"input_audio.{chunk.mimeType.split('/')[1]}"
-        # Initialize the session for a new audio stream
-        cl.user_session.set("audio_buffer", buffer)
-        cl.user_session.set("audio_mime_type", chunk.mimeType)
-
-    # Write the chunks to a buffer and transcribe the whole audio at the end
-    cl.user_session.get("audio_buffer").write(chunk.data)

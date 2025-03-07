@@ -1,0 +1,23 @@
+[project]
+name = "chatbot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "chainlit>=2.2.1",
+    "google-generativeai>=0.8.4",
+    "google-search-results>=2.4.2",
+    "langchain-community>=0.3.9",
+    "langchain-core==0.3.21",
+    "langchain-google-genai>=2.0.7",
+    "langgraph>=0.2.56",
+    "langgraph-checkpoint-postgres>=2.0.15",
+    "langsmith>=0.1.147",
+    "packaging==23.2",
+    "psycopg>=3.2.5",
+    "psycopg-binary>=3.2.5",
+    "psycopg-pool>=3.2.6",
+    "pydantic==2.8.2",
+    "pydantic-settings==2.5.2",
+]
