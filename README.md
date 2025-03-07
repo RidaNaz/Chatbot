@@ -27,7 +27,7 @@ uv add -r requirements.txt
 chainlit create-secret
 ```
 
-- Run the Streamlit App
+- Run the Chainlit App
 ```bash
 chainlit run app.py -w
 ```
